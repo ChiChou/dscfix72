@@ -8,8 +8,8 @@ Since IDA 7.2, `dscu` is exposed to IDAPython so you can control the loader more
 
 ## Usage:
 
-`cd helper; make` to build symbol extractor, works on WSL, Linux and macOS
-`python3 headless.py dyld_shared_cache_arm64 /System/Library/ControlCenter/Bundles/DisplayModule.bundle/DisplayModule`
+1. `cd helper; make` to build symbol extractor, works on WSL, Linux and macOS
+2. `python3 headless.py dyld_shared_cache_arm64 /System/Library/ControlCenter/Bundles/DisplayModule.bundle/DisplayModule`
 
 References:
 

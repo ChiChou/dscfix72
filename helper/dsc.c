@@ -59,8 +59,10 @@ typedef struct mach_header mach_hdr32_t;
 typedef struct mach_header_64 mach_hdr64_t;
 typedef struct load_command mach_lc_t;
 typedef struct symtab_command mach_stab_t;
-typedef struct segment_command_64 segment_64_t;
 typedef struct segment_command segment_32_t;
+typedef struct segment_command_64 segment_64_t;
+typedef struct section section_32_t;
+typedef struct section_64 section_64_t;
 typedef struct nlist nlist32_t;
 typedef struct nlist_64 nlist64_t;
 
@@ -74,6 +76,33 @@ static void *addr2ptr(uint64_t addr, void *cache) {
   }
   LOG("Failed to translate address 0x%llx", addr);
   exit(-1);
+}
+
+static void *addr2file(uint64_t addr, void *cache) {
+  cache_hdr_t *hdr = cache;
+  cache_map_t *map = (cache_map_t *)((uintptr_t)cache + hdr->mappingOffset);
+  for (uint32_t i = 0; i < hdr->mappingCount; ++i) {
+    if (addr >= map[i].address && addr < map[i].address + map[i].size) {
+      return (void *)((uintptr_t)map[i].fileOffset + (addr - map[i].address));
+    }
+  }
+  LOG("Failed to translate address 0x%llx", addr);
+  exit(-1);
+}
+
+static void readable_prot(vm_prot_t prot, char out[4]) {
+  int i = 0;
+
+#define CHECK(val, str)                                                                                                \
+  if (prot & val) {                                                                                                    \
+    out[i] = str;                                                                                                      \
+    i++;                                                                                                               \
+  }
+
+  CHECK(VM_PROT_READ, 'R');
+  CHECK(VM_PROT_WRITE, 'W');
+  CHECK(VM_PROT_EXECUTE, 'X');
+  out[i] = 0;
 }
 
 #define SUFFIX ".symbol"
@@ -125,7 +154,9 @@ int main(int argc, const char **argv) {
     LOG("Bad magic: %s", hdr->magic);
     return -1;
   }
+
   cache_img_t *img = (cache_img_t *)((uintptr_t)cache + hdr->imagesOffset);
+  char prot[4];
   for (uint32_t i = 0; i < hdr->imagesCount; ++i) {
     void *ptr = addr2ptr(img[i].address, cache);
     fprintf(fout, "file %s\n", (const char *)(cache + img[i].pathFileOffset));
@@ -133,9 +164,12 @@ int main(int argc, const char **argv) {
       mach_hdr32_t *h32 = ptr;
       for (mach_lc_t *cmd = (mach_lc_t *)(h32 + 1), *end = (mach_lc_t *)((uintptr_t)cmd + h32->sizeofcmds); cmd < end;
            cmd = (mach_lc_t *)((uintptr_t)cmd + cmd->cmdsize)) {
-        if (cmd->cmd == LC_SEGMENT_64) {
-          segment_32_t *seg = (segment_32_t*)cmd;
-          fprintf(fout, "segment %s 0x%lx 0x%lx\n", seg->segname, seg->vmaddr, seg->vmaddr + seg->vmsize);
+        if (cmd->cmd == LC_SEGMENT) {
+          segment_32_t *seg = (segment_32_t *)cmd;
+          unsigned long ceil = seg->vmaddr + seg->vmsize - 1;
+          readable_prot(seg->maxprot, prot);
+          fprintf(fout, "segment %s 0x%lx 0x%lx 0x%lx 0x%lx %s\n", seg->segname, seg->vmaddr,
+                  addr2file(seg->vmaddr, cache), seg->vmsize, prot);
         } else if (cmd->cmd == LC_SYMTAB) {
           mach_stab_t *stab = (mach_stab_t *)cmd;
           nlist32_t *syms = (nlist32_t *)((uintptr_t)cache + stab->symoff);
@@ -156,8 +190,14 @@ int main(int argc, const char **argv) {
       for (mach_lc_t *cmd = (mach_lc_t *)(h64 + 1), *end = (mach_lc_t *)((uintptr_t)cmd + h64->sizeofcmds); cmd < end;
            cmd = (mach_lc_t *)((uintptr_t)cmd + cmd->cmdsize)) {
         if (cmd->cmd == LC_SEGMENT_64) {
-          segment_64_t *seg = (segment_64_t*)cmd;
-          fprintf(fout, "segment %s 0x%llx 0x%llx\n", seg->segname, seg->vmaddr, seg->vmaddr + seg->vmsize);
+          segment_64_t *seg = (segment_64_t *)cmd;
+          readable_prot(seg->initprot, prot);
+          fprintf(fout, "segment %s 0x%llx 0x%llx 0x%llx 0x%llx %s\n", seg->segname, seg->vmaddr,
+                  seg->vmaddr + seg->vmsize - 1, addr2file(seg->vmaddr, cache), seg->filesize, prot);
+          for (uint j = 0; j < seg->nsects; j++) {
+            section_64_t *sect = (section_64_t *)((uintptr_t)cmd + sizeof(segment_64_t)) + j;
+            fprintf(fout, "section %s 0x%llx 0x%llx 0x%llx 0x%llx\n", sect->sectname, sect->addr, sect->addr + sect->size, addr2file(sect->addr, cache), sect->size);
+          }
         } else if (cmd->cmd == LC_SYMTAB) {
           mach_stab_t *stab = (mach_stab_t *)cmd;
           nlist64_t *syms = (nlist64_t *)((uintptr_t)cache + stab->symoff);

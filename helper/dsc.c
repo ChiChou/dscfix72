@@ -170,6 +170,10 @@ int main(int argc, const char **argv) {
           readable_prot(seg->maxprot, prot);
           fprintf(fout, "segment %s 0x%lx 0x%lx 0x%lx 0x%lx %s\n", seg->segname, seg->vmaddr,
                   addr2file(seg->vmaddr, cache), seg->vmsize, prot);
+          for (uint j = 0; j < seg->nsects; j++) {
+            section_32_t *sect = (section_32_t *)((uintptr_t)cmd + sizeof(segment_64_t)) + j;
+            fprintf(fout, "section %s 0x%lx 0x%lx 0x%lx 0x%lx\n", sect->sectname, sect->addr, sect->addr + sect->size, addr2file(sect->addr, cache), sect->size);
+          }
         } else if (cmd->cmd == LC_SYMTAB) {
           mach_stab_t *stab = (mach_stab_t *)cmd;
           nlist32_t *syms = (nlist32_t *)((uintptr_t)cache + stab->symoff);

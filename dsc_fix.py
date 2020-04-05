@@ -186,61 +186,12 @@ class Task(object):
             # todo: __cfstring
 
 
-PLUGIN_NAME = "dsc utils"
-
-
-def PLUGIN_ENTRY():
-    """Entry point of this code if launched as a plugin."""
-    return DSCPlugin()
-
-
-class DSCPlugin(ida_idaapi.plugin_t):
-    flags = 0
-    comment = "Fix dsc symbols"
-    help = comment
-    wanted_name = PLUGIN_NAME
-    # wanted_hotkey = "Ctrl-Shift-M"
-
-    def init(self):
-        return (ida_idaapi.PLUGIN_OK if
-                is_compatible() else ida_idaapi.PLUGIN_SKIP)
-
-    def run(self, arg):
-        entry()
-
-    def term(self):
-        pass
-
-
-def is_ida_version(requested):
-    """Checks minimum required IDA version."""
-    rv = requested.split(".")
-    kv = kw.get_kernel_version().split(".")
-
-    count = min(len(rv), len(kv))
-    if not count:
-        return False
-
-    for i in range(count):
-        if int(kv[i]) < int(rv[i]):
-            return False
-    return True
-
-def is_compatible():
-    """Checks whether script is compatible with current IDA and
-    decompiler versions."""
-    min_ida_ver = "7.2"
-    return is_ida_version(min_ida_ver)
-
-
-def entry():
+def main():
     import sys
     import os
-    import shlex
-    import subprocess
 
-    if len(sys.argv < 2):
-        path = idc.AskFile(0, "*.*", "dyld shared cache")
+    if len(sys.argv) < 2:
+        path = kw.ask_file(0, "*.*", "dyld shared cache")
     else:
         path = sys.argv[1]
 
@@ -254,3 +205,6 @@ def entry():
     s.load()
     t = Task(s, path)
     t.go()
+
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 import os
-import atexit
+import sys
 
 import idc
 import idautils
@@ -13,6 +13,9 @@ import ida_idaapi
 import ida_kernwin as kw
 
 from ida_loader import load_and_run_plugin
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 from dsc_symbols import Symbols
 
@@ -159,9 +162,9 @@ class Task(object):
             idc.set_name(p, name, idc.SN_CHECK)
 
     def resolve_selectors(self, ea):
-        # segment = self.symbols.segments['/usr/lib/libobjc.A.dylib']['__OBJC_RO']
-        # base = segment.base
-        # dscu_load_region(base)
+        segment = self.symbols.segments['/usr/lib/libobjc.A.dylib']['__OBJC_RO']
+        base = segment.base
+        dscu_load_region(base)
 
         end = idc.get_segm_end(ea)
         for addr in range(ea, end, 8):
@@ -190,15 +193,23 @@ class Task(object):
 
 
 def main():
-    import sys
-    import os
-
-    if len(sys.argv) < 2:
+    do_not_exit = False
+    print(idc.ARGV)
+    if len(idc.ARGV) < 2:
+        do_not_exit = True
         path = kw.ask_file(0, "*.*", "dyld shared cache")
     else:
-        path = sys.argv[1]
+        path = idc.ARGV[1]
     
     dscu_load_module('/usr/lib/libobjc.A.dylib')
+    # perform autoanalysis
+    idc.auto_mark_range(0, idc.BADADDR, idc.AU_FINAL)
+    idc.auto_wait()
+    
+    # analyze objc segments
+    load_and_run_plugin("objc", 1)
+    # analyze NSConcreteGlobalBlock objects
+    load_and_run_plugin("objc", 4)
 
     sym = path + '.symbol'
     if not os.path.exists(sym):
@@ -211,14 +222,8 @@ def main():
     t = Task(s, path)
     t.go()
 
-    # analyze objc segments
-    load_and_run_plugin("objc", 1)
-    # analyze NSConcreteGlobalBlock objects
-    load_and_run_plugin("objc", 4)
-
-    # perform autoanalysis
-    idc.auto_mark_range(0, idc.BADADDR, idc.AU_FINAL)
-    idc.auto_wait()
+    if not do_not_exit:
+        idc.qexit(0)
 
 if __name__ == "__main__":
     main()

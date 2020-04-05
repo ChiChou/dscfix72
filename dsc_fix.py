@@ -124,8 +124,14 @@ class Task(object):
         # fix __stubs
         for ea in stubs:
             next_ea = ea + idc.create_insn(ea)
-            addr = idc.get_operand_value(
-                ea, 1) + idc.get_operand_value(next_ea, 2)
+            if idc.print_insn_mnem(ea) == 'ADRL':
+                addr = idc.get_operand_value(ea, 1)
+            elif idc.print_insn_mnem(ea) == 'ADRP' and idc.print_insn_mnem(next_ea) == 'ADD':
+                addr = idc.get_operand_value(ea, 1) + idc.get_operand_value(next_ea, 2)
+            else:
+                print('unknown instructions at %x' % ea)
+                continue
+
             try:
                 name = self.symbols.lookup(addr)
             except KeyError:
@@ -152,13 +158,10 @@ class Task(object):
             print('rename %x to %s' % (p, name))
             idc.set_name(p, name, idc.SN_CHECK)
 
-        # start, *_ = self.mapping['segments']['libobjc.A.dylib:__OBJC_RW']
-        # dscu_load_region(start)
-
     def resolve_selectors(self, ea):
-        segment = self.symbols.segments['/usr/lib/libobjc.A.dylib']['__OBJC_RO']
-        base = segment.base
-        dscu_load_region(base)
+        # segment = self.symbols.segments['/usr/lib/libobjc.A.dylib']['__OBJC_RO']
+        # base = segment.base
+        # dscu_load_region(base)
 
         end = idc.get_segm_end(ea)
         for addr in range(ea, end, 8):
@@ -194,6 +197,8 @@ def main():
         path = kw.ask_file(0, "*.*", "dyld shared cache")
     else:
         path = sys.argv[1]
+    
+    dscu_load_module('/usr/lib/libobjc.A.dylib')
 
     sym = path + '.symbol'
     if not os.path.exists(sym):
@@ -205,6 +210,15 @@ def main():
     s.load()
     t = Task(s, path)
     t.go()
+
+    # analyze objc segments
+    load_and_run_plugin("objc", 1)
+    # analyze NSConcreteGlobalBlock objects
+    load_and_run_plugin("objc", 4)
+
+    # perform autoanalysis
+    idc.auto_mark_range(0, idc.BADADDR, idc.AU_FINAL)
+    idc.auto_wait()
 
 if __name__ == "__main__":
     main()

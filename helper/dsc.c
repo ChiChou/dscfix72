@@ -161,35 +161,11 @@ int main(int argc, const char **argv) {
     void *ptr = addr2ptr(img[i].address, cache);
     fprintf(fout, "file %s\n", (const char *)(cache + img[i].pathFileOffset));
     if (*(uint32_t *)ptr == MH_MAGIC) {
-      mach_hdr32_t *h32 = ptr;
-      for (mach_lc_t *cmd = (mach_lc_t *)(h32 + 1), *end = (mach_lc_t *)((uintptr_t)cmd + h32->sizeofcmds); cmd < end;
-           cmd = (mach_lc_t *)((uintptr_t)cmd + cmd->cmdsize)) {
-        if (cmd->cmd == LC_SEGMENT) {
-          segment_32_t *seg = (segment_32_t *)cmd;
-          unsigned long ceil = seg->vmaddr + seg->vmsize - 1;
-          readable_prot(seg->maxprot, prot);
-          fprintf(fout, "segment %s 0x%lx 0x%lx 0x%lx 0x%lx %s\n", seg->segname, seg->vmaddr,
-                  addr2file(seg->vmaddr, cache), seg->vmsize, prot);
-          for (uint j = 0; j < seg->nsects; j++) {
-            section_32_t *sect = (section_32_t *)((uintptr_t)cmd + sizeof(segment_64_t)) + j;
-            fprintf(fout, "section %s 0x%lx 0x%lx 0x%lx 0x%lx\n", sect->sectname, sect->addr, sect->addr + sect->size, addr2file(sect->addr, cache), sect->size);
-          }
-        } else if (cmd->cmd == LC_SYMTAB) {
-          mach_stab_t *stab = (mach_stab_t *)cmd;
-          nlist32_t *syms = (nlist32_t *)((uintptr_t)cache + stab->symoff);
-          char *strs = (char *)((uintptr_t)cache + stab->stroff);
-          for (size_t n = 0; n < stab->nsyms; ++n) {
-            if ((syms[n].n_type & N_TYPE) != N_UNDF && (syms[n].n_type & N_EXT)) {
-              if (strs[syms[n].n_un.n_strx] != '_') {
-                LOG("Not a C symbol: %s", &strs[syms[n].n_un.n_strx]);
-              } else {
-                fprintf(fout, "symbol %s 0x%x\n", &strs[syms[n].n_un.n_strx + 1], syms[n].n_value);
-              }
-            }
-          }
-        }
-      }
-    } else if (*(uint32_t *)ptr == MH_MAGIC_64) {
+      LOG("Sorry, 32-bit is not supported");
+      abort();
+    }
+    
+    if (*(uint32_t *)ptr == MH_MAGIC_64) {
       mach_hdr64_t *h64 = ptr;
       for (mach_lc_t *cmd = (mach_lc_t *)(h64 + 1), *end = (mach_lc_t *)((uintptr_t)cmd + h64->sizeofcmds); cmd < end;
            cmd = (mach_lc_t *)((uintptr_t)cmd + cmd->cmdsize)) {

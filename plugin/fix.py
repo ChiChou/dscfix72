@@ -11,7 +11,9 @@ import ida_segment
 import ida_bytes
 import ida_funcs
 import ida_idaapi
+import ida_ida
 import ida_kernwin as kw
+import ida_hexrays as hr
 
 from ida_loader import load_and_run_plugin
 from pathlib import Path
@@ -94,6 +96,10 @@ class Task(object):
         todo = set()
         names = {}
         stubs = set()
+        funcs = set()
+
+        ida_ida.idainfo_set_auto_enabled(False)
+
         for addr in idautils.Functions():
             func = ida_funcs.get_func(addr)
             curr_ea = func.start_ea
@@ -105,6 +111,7 @@ class Task(object):
                     except StopIteration:
                         print('%x not found', target)
                         continue
+
                     base = sect.base
                     todo.add(base)
 
@@ -115,36 +122,72 @@ class Task(object):
                             names[target] = self.symbols.lookup(target)
                         except KeyError:
                             print('unknown: %x' % target)
+                    funcs.add(func.start_ea)
                 curr_ea = idc.next_head(curr_ea)
 
         for base in todo:
             self.fix(base)
 
         for ea, name in names.items():
+            idc.create_insn(ea)
             idc.set_name(ea, name, idc.SN_CHECK)
+
+        def disasm(ea):
+            curr_ea = ea
+            while True:
+                size = idc.create_insn(curr_ea)
+                yield idautils.DecodeInstruction(curr_ea)
+                curr_ea += size
 
         # fix __stubs
         for ea in stubs:
-            next_ea = ea + idc.create_insn(ea)
-            if idc.print_insn_mnem(ea) == 'ADRL':
-                addr = idc.get_operand_value(ea, 1)
-            elif idc.print_insn_mnem(ea) == 'ADRP' and idc.print_insn_mnem(next_ea) == 'ADD':
-                addr = idc.get_operand_value(
-                    ea, 1) + idc.get_operand_value(next_ea, 2)
+            dis = disasm(ea)
+            insn = next(dis)
+
+            if insn.itype == idaapi.ARM_adrp:
+                adrp = insn
+                add = next(dis)
+                br = next(dis)
+                if adrp.Op1.type == idaapi.o_reg and adrp.Op2.type == idaapi.o_imm \
+                    and add.itype == idaapi.ARM_add and add.Op1.type == idaapi.o_reg \
+                        and add.Op2.type == idaapi.o_reg and add.auxpref == 0 and \
+                    br.itype == idaapi.ARM_br and br.Op1.type == idaapi.o_reg and \
+                        adrp.Op1.reg == add.Op1.reg == add.Op2.reg == br.Op1.reg:
+
+                    addr = adrp.Op2.value + add.Op3.value
+                else:
+                    print('Unknown stub at %x' % ea)
+
+            elif insn.itype == idaapi.ARM_adrl and insn.Op2.type == idaapi.o_imm:
+                adrl = insn
+                addr = adrl.Op2.value
             else:
-                print('unknown instructions at %x' % ea)
+                print('unknown instructions (%s) at %x' %
+                      (idc.print_insn_mnem(ea), ea))
                 continue
 
             try:
                 name = self.symbols.lookup(addr)
             except KeyError:
-                print('warning: %d not found', addr)
+                print('warning: 0x%x not found' % addr)
                 continue
 
             self.fix(addr)
+            idc.auto_wait()
             suggested = uniq_name('j_' + name)
             print('rename %x to %s' % (ea, suggested))
+            idc.set_name(addr, name, idc.SN_CHECK)
+            idc.create_insn(addr)
             idc.set_name(ea, suggested, idc.SN_CHECK)
+
+        # enable auto analysis
+        ida_ida.idainfo_set_auto_enabled(True)
+
+        # rebuild functions, fix JUMPOUT(0x????)
+        for ea in funcs:
+            ida_bytes.del_items(ea)
+            idc.create_insn(ea)
+            ida_funcs.add_func(ea)
 
     def resolve_classes(self, ea):
         end = idc.get_segm_end(ea)
@@ -200,15 +243,9 @@ def main():
     else:
         path = idc.ARGV[1]
 
-    dscu_load_module('/usr/lib/libobjc.A.dylib')
     # perform autoanalysis
     idc.auto_mark_range(0, idc.BADADDR, idc.AU_FINAL)
     idc.auto_wait()
-
-    # analyze objc segments
-    load_and_run_plugin("objc", 1)
-    # analyze NSConcreteGlobalBlock objects
-    load_and_run_plugin("objc", 4)
 
     sym = path + '.symbol'
     if not os.path.exists(sym):
@@ -220,6 +257,13 @@ def main():
     s.load()
     t = Task(s, path)
     t.go()
+
+    # dscu_load_module('/usr/lib/libobjc.A.dylib')
+    # analyze objc segments
+    load_and_run_plugin("objc", 1)
+    # analyze NSConcreteGlobalBlock objects
+    load_and_run_plugin("objc", 4)
+    idc.auto_wait()
 
     if not do_not_exit:
         idc.qexit(0)

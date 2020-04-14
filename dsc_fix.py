@@ -194,7 +194,6 @@ class Task(object):
 
 def main():
     do_not_exit = False
-    print(idc.ARGV)
     if len(idc.ARGV) < 2:
         do_not_exit = True
         path = kw.ask_file(0, "*.*", "dyld shared cache")

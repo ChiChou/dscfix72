@@ -1,4 +1,5 @@
 from __future__ import print_function
+from lib.symbols import Symbols
 
 import os
 import sys
@@ -16,8 +17,6 @@ from ida_loader import load_and_run_plugin
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-
-from dsc_symbols import Symbols
 
 
 def dscu_load_module(module):
@@ -130,7 +129,8 @@ class Task(object):
             if idc.print_insn_mnem(ea) == 'ADRL':
                 addr = idc.get_operand_value(ea, 1)
             elif idc.print_insn_mnem(ea) == 'ADRP' and idc.print_insn_mnem(next_ea) == 'ADD':
-                addr = idc.get_operand_value(ea, 1) + idc.get_operand_value(next_ea, 2)
+                addr = idc.get_operand_value(
+                    ea, 1) + idc.get_operand_value(next_ea, 2)
             else:
                 print('unknown instructions at %x' % ea)
                 continue
@@ -199,12 +199,12 @@ def main():
         path = kw.ask_file(0, "*.*", "dyld shared cache")
     else:
         path = idc.ARGV[1]
-    
+
     dscu_load_module('/usr/lib/libobjc.A.dylib')
     # perform autoanalysis
     idc.auto_mark_range(0, idc.BADADDR, idc.AU_FINAL)
     idc.auto_wait()
-    
+
     # analyze objc segments
     load_and_run_plugin("objc", 1)
     # analyze NSConcreteGlobalBlock objects
@@ -223,6 +223,7 @@ def main():
 
     if not do_not_exit:
         idc.qexit(0)
+
 
 if __name__ == "__main__":
     main()

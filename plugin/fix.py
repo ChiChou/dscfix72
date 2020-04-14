@@ -59,6 +59,26 @@ def uniq_name(name):
     return suggested
 
 
+def disasm(ea, end=idc.BADADDR, count=-1):
+    curr_ea = ea
+
+    if end != idc.BADADDR and count != -1:
+        raise RuntimeError('"end" and "count" can not be both set')
+
+    counter = 0
+    while True:
+        if end != idc.BADADDR and curr_ea > end:
+            break
+
+        if count != -1 and counter > count:
+            break
+
+        size = idc.create_insn(curr_ea)
+        yield idautils.DecodeInstruction(curr_ea)
+        curr_ea += size
+        counter += 1
+
+
 class Task(object):
     def __init__(self, symbols: Symbols, filename):
         self.symbols = symbols
@@ -81,18 +101,9 @@ class Task(object):
             idc.create_insn(ea)
         sect_name = ':'.join([os.path.basename(section.library), section.name])
         idc.set_segm_name(section.base, sect_name)
+        idc.auto_wait()
 
     def find_bad_addr(self, ea):
-        def unknown_call_target(ea):
-            # todo: x86?
-            if idc.print_insn_mnem(ea) != 'BL':
-                return None
-
-            target = idc.get_operand_value(ea, 0)
-            # print('call:', hex(target))
-            if idc.get_segm_start(target) == idc.BADADDR:
-                return target
-
         todo = set()
         names = {}
         stubs = set()
@@ -102,10 +113,10 @@ class Task(object):
 
         for addr in idautils.Functions():
             func = ida_funcs.get_func(addr)
-            curr_ea = func.start_ea
-            while curr_ea != idc.BADADDR and curr_ea <= func.end_ea:
-                target = unknown_call_target(curr_ea)
-                if target:
+            body = disasm(func.start_ea, end=func.end_ea)
+            for insn in body:
+                if insn.itype in (idaapi.ARM_b, idaapi.ARM_bl):
+                    target = insn.Op1.addr
                     try:
                         sect = self.symbols.fast(target)
                     except StopIteration:
@@ -123,7 +134,6 @@ class Task(object):
                         except KeyError:
                             print('unknown: %x' % target)
                     funcs.add(func.start_ea)
-                curr_ea = idc.next_head(curr_ea)
 
         for base in todo:
             self.fix(base)
@@ -131,13 +141,6 @@ class Task(object):
         for ea, name in names.items():
             idc.create_insn(ea)
             idc.set_name(ea, name, idc.SN_CHECK)
-
-        def disasm(ea):
-            curr_ea = ea
-            while True:
-                size = idc.create_insn(curr_ea)
-                yield idautils.DecodeInstruction(curr_ea)
-                curr_ea += size
 
         # fix __stubs
         for ea in stubs:
@@ -151,7 +154,7 @@ class Task(object):
                 if adrp.Op1.type == idaapi.o_reg and adrp.Op2.type == idaapi.o_imm \
                     and add.itype == idaapi.ARM_add and add.Op1.type == idaapi.o_reg \
                         and add.Op2.type == idaapi.o_reg and add.auxpref == 0 and \
-                    br.itype == idaapi.ARM_br and br.Op1.type == idaapi.o_reg and \
+                br.itype == idaapi.ARM_br and br.Op1.type == idaapi.o_reg and \
                         adrp.Op1.reg == add.Op1.reg == add.Op2.reg == br.Op1.reg:
 
                     addr = adrp.Op2.value + add.Op3.value

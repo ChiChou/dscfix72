@@ -18,3 +18,7 @@ References:
 * [IDA: IDA 7.2 – The Mac Rundown](https://www.hex-rays.com/products/ida/7_2/the_mac_rundown/)
 * https://gist.github.com/Siguza/3cc8021cb4a029affc536279f7648211
 * https://github.com/deepinstinct/dsc_fix
+
+## Known Issue:
+
+Each `objc_autoreleaseReturnValue` at the end of the function body will become a `JUMPOUT()` in decompiler and I don't know why

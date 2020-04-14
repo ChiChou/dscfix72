@@ -5,3 +5,6 @@ helper/dsc.macho
 .DS_Store
 
 *.pyc
+
+*.i64
+*.log

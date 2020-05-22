@@ -172,11 +172,11 @@ int main(int argc, const char **argv) {
         if (cmd->cmd == LC_SEGMENT_64) {
           segment_64_t *seg = (segment_64_t *)cmd;
           readable_prot(seg->initprot, prot);
-          fprintf(fout, "segment %s 0x%llx 0x%llx 0x%llx 0x%llx %s\n", seg->segname, seg->vmaddr,
+          fprintf(fout, "segment %s 0x%llx 0x%llx %p 0x%llx %s\n", seg->segname, seg->vmaddr,
                   seg->vmaddr + seg->vmsize - 1, addr2file(seg->vmaddr, cache), seg->filesize, prot);
-          for (uint j = 0; j < seg->nsects; j++) {
+          for (uint32_t j = 0; j < seg->nsects; j++) {
             section_64_t *sect = (section_64_t *)((uintptr_t)cmd + sizeof(segment_64_t)) + j;
-            fprintf(fout, "section %s 0x%llx 0x%llx 0x%llx 0x%llx\n", sect->sectname, sect->addr, sect->addr + sect->size, addr2file(sect->addr, cache), sect->size);
+            fprintf(fout, "section %s 0x%llx 0x%llx %p 0x%llx\n", sect->sectname, sect->addr, sect->addr + sect->size, addr2file(sect->addr, cache), sect->size);
           }
         } else if (cmd->cmd == LC_SYMTAB) {
           mach_stab_t *stab = (mach_stab_t *)cmd;
